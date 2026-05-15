@@ -1,0 +1,1 @@
+# personal-girlfriend-llm-model-training-plan
