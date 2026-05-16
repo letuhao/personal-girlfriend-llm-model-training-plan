@@ -1,87 +1,91 @@
 # fine-tune-girlfriend
 
-Distill một nhân vật chatbot tiếng Việt — **Linh**, cô gái Hà Nội gắt gỏng,
-nữ quyền sắc bén — từ một teacher model lớn chạy local sang một student model
-nhỏ (Qwen2.5-7B) chạy được trên RTX 4090.
+Distill a Vietnamese character chatbot — **Linh**, an abrasive, sharply
+feminist girl from Hanoi — from a large local teacher model into a small
+student model (Qwen2.5-7B) that runs on an RTX 4090.
 
-Phương pháp: **response distillation** — teacher sinh dữ liệu hội thoại, student
-học bắt chước qua QLoRA fine-tuning.
+Method: **response distillation** — the teacher generates conversation data,
+the student learns to imitate it via QLoRA fine-tuning.
 
-> Dự án học fine-tune từ zero. Code ưu tiên rõ ràng, comment giải thích "tại sao".
+> A learn-fine-tuning-from-zero project. Code favors clarity, with comments
+> that explain the "why".
 
-## Cấu trúc repo
+## Repository layout
 
 ```
-config.py              cấu hình trung tâm (PILOT, teacher model, hyperparams)
-diagnose.py            test teacher 1 call/loại prompt trước khi chạy full
-run_pilot.py           chạy toàn bộ pipeline thu thập dữ liệu
+config.py              central config (PILOT switch, teacher model, hyperparams)
+diagnose.py            test the teacher with 1 call per prompt type before a full run
+run_pilot.py           run the whole data-collection pipeline
 prompts/               linh_character · judge · expand · conversation_genA
-data/seeds.yaml        79 seed viết tay
+data/seeds.yaml        79 hand-written seeds
 pipeline/
-  llm_client.py        client LM Studio + trace + parse JSON chịu lỗi
-  trace.py             ghi log mọi call teacher -> logs/trace.jsonl
-  jsonl.py             đọc/ghi JSONL + tiện ích resume
-  dedup.py             dedup ngữ nghĩa bằng embedding bge-m3
-  expand · generate · judge · filter · pack   — 5 stage của pipeline
-train/train_qlora.py   train QLoRA bằng Unsloth
+  llm_client.py        LM Studio client + tracing + lenient JSON parsing
+  trace.py             logs every teacher call -> logs/trace.jsonl
+  jsonl.py             JSONL read/write + resume helpers
+  dedup.py             semantic dedup with the bge-m3 embedding model
+  expand · generate · judge · filter · pack   — the 5 pipeline stages
+train/train_qlora.py   QLoRA training with Unsloth
 ```
 
 ## Pipeline
 
 ```
-data/seeds.yaml          79 seed viết tay
-   │  C1  expand.py      Self-Instruct theo batch + dedup
+data/seeds.yaml          79 hand-written seeds
+   │  C1  expand.py      batched Self-Instruct + dedup
    ▼
 scenarios.jsonl
-   │  C2  generate.py    sinh hội thoại multi-turn (Cách A), k bản/scenario
+   │  C2  generate.py    generate multi-turn conversations (Method A), k per scenario
    ▼
 raw_conversations.jsonl
-   │  D3  judge.py       LLM-judge chấm điểm + rejection sampling (chọn 1/k)
+   │  D3  judge.py       LLM-judge scoring + rejection sampling (pick 1 of k)
    ▼
 judged.jsonl
-   │  D1+D2  filter.py   luật + dedup + cổng chất lượng
+   │  D1+D2  filter.py   rules + dedup + final quality gate
    ▼
 dataset.jsonl
-   │  E   pack.py        -> ChatML, split stratified 95/5
+   │  E   pack.py        -> ChatML, stratified 95/5 split
    ▼
 train.jsonl / val.jsonl  →  train/train_qlora.py
 ```
 
-## Chuẩn bị
+## Setup
 
-1. **Teacher** — mở **LM Studio**, nạp model teacher rồi bật server
-   OpenAI-compatible ở tab Developer. Trong settings server, tăng số request
-   song song lên 4+.
-   Teacher nên là model **non-reasoning + MoE (A3B) + vừa hẳn VRAM** để nhanh
-   (đang dùng `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated`).
-2. **Kiểm tra `config.py`** — `TEACHER_MODEL` phải khớp định danh model trong
-   LM Studio (xem `GET http://localhost:1234/v1/models`).
-3. **Cài phụ thuộc pipeline:**
+1. **Teacher** — open **LM Studio**, load the teacher model, and start the
+   OpenAI-compatible server in the Developer tab. In the server settings,
+   raise the parallel-request count to 4+.
+   The teacher should be a **non-reasoning + MoE (A3B) model that fits fully
+   in VRAM** for speed (currently using
+   `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated`).
+2. **Check `config.py`** — `TEACHER_MODEL` must match the model id in LM
+   Studio (see `GET http://localhost:1234/v1/models`).
+3. **Install pipeline dependencies:**
    ```
    pip install -r requirements.txt
    ```
 
-## Chẩn đoán teacher (chạy trước)
+## Diagnose the teacher (run first)
 
-Trước khi chạy cả pipeline, kiểm tra teacher hoạt động + đủ nhanh:
+Before running the whole pipeline, verify the teacher works and is fast
+enough:
 
 ```
 python -u diagnose.py
 ```
 
-Nó gọi teacher 1 lần cho mỗi loại prompt (expand / generate / judge), in rõ
-input + output + kết quả parse JSON. Mọi call ghi vào `logs/trace.jsonl`.
+It calls the teacher once for each prompt type (expand / generate / judge)
+and prints the input + output + JSON parse result. Every call is logged to
+`logs/trace.jsonl`.
 
-## Chạy pipeline thu thập dữ liệu
+## Run the data-collection pipeline
 
-`config.py` có công tắc `PILOT`. `PILOT = True` chạy nhỏ để kiểm tra pipeline
-thông suốt:
+`config.py` has a `PILOT` switch. `PILOT = True` runs a small batch to verify
+the pipeline end to end:
 
 ```
 python run_pilot.py
 ```
 
-Hoặc chạy từng bước để soi dữ liệu giữa chừng:
+Or run each stage separately to inspect the data in between:
 
 ```
 python -m pipeline.expand
@@ -91,36 +95,38 @@ python -m pipeline.filter
 python -m pipeline.pack
 ```
 
-Sau khi pilot chạy ổn và đã **soi kỹ data từng chặng** (đọc file `.jsonl`),
-đổi `PILOT = False` trong `config.py` rồi chạy lại để tạo dataset thật.
+Once the pilot runs cleanly and you have **inspected the data at each stage**
+(read the `.jsonl` files), set `PILOT = False` in `config.py` and re-run to
+build the real dataset.
 
-## Ngắt & resume
+## Interruption & resume
 
-Full run rất dài — pipeline **chịu được ngắt giữa chừng**. Mọi stage dài ghi
-từng record/batch xuống file ngay khi xong (append + flush, giống `logs/`).
-Khi chạy lại:
+A full run is very long — the pipeline **survives interruption**. Every long
+stage writes each record/batch to disk as soon as it is done (append + flush,
+just like `logs/`). On restart:
 
-- `expand`   — resume theo category: category đã đủ scenario thì bỏ qua,
-  category đang dở thì sinh tiếp phần thiếu (ghi từng batch ~30 scenario).
-- `generate` — bỏ qua scenario đã có trong `raw_conversations.jsonl`.
-- `judge`    — bỏ qua scenario đã có trong `judged.jsonl`.
-- `filter` / `pack` — nhanh, luôn chạy lại từ đầu.
+- `expand`   — resumes per category: skips categories that already have enough
+  scenarios, continues partial ones (writes each ~30-scenario batch).
+- `generate` — skips scenarios already in `raw_conversations.jsonl`.
+- `judge`    — skips scenarios already in `judged.jsonl`.
+- `filter` / `pack` — fast, always re-run from scratch.
 
-Cứ chạy lại `python run_pilot.py` là pipeline tiếp tục từ chỗ dở. Mất điện chỉ
-mất tối đa một batch/record đang dở. Muốn chạy lại một stage TỪ ĐẦU: xoá file
-output của stage đó rồi chạy lại.
+Just re-run `python run_pilot.py` and the pipeline continues where it left
+off. A power loss costs at most one in-flight batch/record. To re-run a stage
+from scratch, delete its output file first.
 
-## Cài cho training (cần GPU)
+## Install for training (needs a GPU)
 
-Unsloth + các thư viện train, cài riêng vì nặng và phụ thuộc CUDA:
+Unsloth and the training libraries are installed separately because they are
+heavy and CUDA-dependent:
 
 ```
 pip install unsloth
 pip install --no-deps trl peft accelerate bitsandbytes
 ```
 
-> API của Unsloth/trl thay đổi khá nhanh. Nếu `train_qlora.py` lỗi, đối chiếu
-> với notebook Qwen2.5 mới nhất ở repo Unsloth.
+> The Unsloth/trl APIs change fairly quickly. If `train_qlora.py` breaks,
+> cross-check with the latest Qwen2.5 notebook in the Unsloth repo.
 
 ## Train
 
@@ -128,13 +134,16 @@ pip install --no-deps trl peft accelerate bitsandbytes
 python -m train.train_qlora
 ```
 
-Kết quả nằm trong `outputs/linh-qlora/`: adapter LoRA + bản GGUF. Nạp file
-GGUF vào LM Studio để chat thử với Linh.
+Output lands in `outputs/linh-qlora/`: the LoRA adapter plus a GGUF build.
+Load the GGUF into LM Studio to chat with Linh.
 
-## Lưu ý quan trọng
+## Notes
 
-- **Eval bằng cách chat thật**, không tin val loss.
-- Soi data ở mỗi file `.jsonl` trung gian — pipeline cố tình ghi ra từng chặng
-  để debug và rerun một bước không phải chạy lại từ đầu.
-- Triết lý: chạy bản đơn giản trước (pilot, Cách A), *nhìn thấy lỗi trên data
-  thật*, rồi mới nâng cấp (Cách B role-simulation cho các category quan trọng).
+- **Evaluate by actually chatting** with the model, not by trusting val loss.
+- Inspect the data in each intermediate `.jsonl` file — the pipeline writes
+  every stage on purpose, so you can debug and re-run one step without
+  redoing everything.
+- Philosophy: run the simple version first (pilot, Method A), *see the
+  failures on real data*, then upgrade (Method B role-simulation for the
+  important categories).
+```
