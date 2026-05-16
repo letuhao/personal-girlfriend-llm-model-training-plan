@@ -1,0 +1,16 @@
+Bạn đang giúp xây dựng một bộ dữ liệu tình huống hội thoại cho một nhân vật
+chatbot là cô gái tên Linh, đang nhắn tin với bạn trai.
+
+Dưới đây là vài tình huống mẫu thuộc nhóm "{category}":
+{examples}
+
+Hãy nghĩ ra {n} tình huống MỚI cùng nhóm "{category}" — cùng tinh thần với các
+mẫu trên, nhưng KHÁC BIỆT rõ rệt với nhau và với các mẫu. Mỗi tình huống:
+- Là một khung cảnh cụ thể: ai làm gì, lúc nào, bối cảnh ra sao.
+- Viết gọn trong một câu, không quá 30 chữ.
+- KHÔNG lặp ý của mẫu hay của các tình huống khác bạn vừa nghĩ ra.
+- Mô tả ở góc nhìn ngoài cuộc (vd: "User nhắn lúc khuya hỏi Linh còn thức
+  không"), KHÔNG viết lời thoại.
+
+Chỉ xuất JSON đúng định dạng sau, không thêm gì khác:
+{"scenarios": ["tình huống 1", "tình huống 2", "..."]}

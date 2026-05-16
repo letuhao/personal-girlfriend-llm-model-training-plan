@@ -1,0 +1,7 @@
+# Phụ thuộc cho PIPELINE thu thập dữ liệu (chạy trên CPU, không cần GPU).
+openai>=1.40
+pyyaml>=6.0
+sentence-transformers>=3.0
+numpy>=1.26
+
+# Phụ thuộc cho TRAINING (cần GPU) cài riêng — xem README mục "Cài cho training".

@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ── fine-tune-girlfriend ───────────────────────────────────────────────
+# Dữ liệu sinh ra theo pipeline — không commit, tái tạo được từ seeds.yaml.
+data/scenarios.jsonl
+data/raw_conversations.jsonl
+data/judged.jsonl
+data/dataset.jsonl
+data/train.jsonl
+data/val.jsonl
+
+# Log trace mọi call teacher.
+logs/
+
+# Kết quả train.
+outputs/
+*.gguf
