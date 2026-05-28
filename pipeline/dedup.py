@@ -1,4 +1,7 @@
-"""Dedup bằng embedding (bge-m3) — dùng chung cho expand (C1) và filter (D2).
+"""Dedup bằng embedding — dùng chung cho expand (C1) và filter (D2).
+
+Gọi LM Studio embeddings API (text-embedding-bge-m3 đã loaded sẵn) thay vì
+load local SentenceTransformer — tránh tranh VRAM với teacher model 35B.
 
 Ý tưởng: nhúng mọi text thành vector, duyệt lần lượt, item nào "gần trùng"
 (cosine similarity vượt ngưỡng) với một item ĐÃ GIỮ thì bỏ.
@@ -6,16 +9,26 @@
 from functools import lru_cache
 
 import numpy as np
+from openai import OpenAI
 
-from config import EMBED_MODEL
+from config import EMBED_MODEL, LMSTUDIO_BASE_URL, LMSTUDIO_API_KEY
 
 
 @lru_cache(maxsize=1)
-def _embedder():
-    """Nạp model embedding một lần duy nhất (lười — chỉ tải khi cần)."""
-    from sentence_transformers import SentenceTransformer
-    print(f"  (nạp embedding model {EMBED_MODEL}, lần đầu sẽ tải về...)")
-    return SentenceTransformer(EMBED_MODEL)
+def _client() -> OpenAI:
+    return OpenAI(base_url=LMSTUDIO_BASE_URL, api_key=LMSTUDIO_API_KEY)
+
+
+def _embed(texts: list[str]) -> np.ndarray:
+    """Gọi LM Studio embeddings API, trả ma trận đã normalize (n, dim)."""
+    resp = _client().embeddings.create(model=EMBED_MODEL, input=texts)
+    # Giữ đúng thứ tự theo index trả về
+    vecs = np.array(
+        [d.embedding for d in sorted(resp.data, key=lambda x: x.index)],
+        dtype=np.float32,
+    )
+    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+    return vecs / np.where(norms == 0, 1.0, norms)
 
 
 def dedup_texts(items, key, threshold):
@@ -29,14 +42,11 @@ def dedup_texts(items, key, threshold):
         return list(items)
 
     texts = [key(it) for it in items]
-    emb = _embedder().encode(texts, normalize_embeddings=True,
-                             show_progress_bar=False)
-    emb = np.asarray(emb, dtype=np.float32)
+    emb = _embed(texts)
 
-    kept = []          # chỉ số các item được giữ
+    kept = []
     for i in range(len(items)):
         if kept:
-            # vì vector đã chuẩn hoá -> tích vô hướng chính là cosine sim
             sims = emb[kept] @ emb[i]
             if float(sims.max()) >= threshold:
                 continue
@@ -60,9 +70,8 @@ class Deduper:
         texts = [t for t in texts if t]
         if not texts:
             return
-        vecs = _embedder().encode(texts, normalize_embeddings=True,
-                                  show_progress_bar=False)
-        vecs = np.asarray(vecs, dtype=np.float32)
+        # Gọi theo batch 512 để tránh request quá lớn
+        vecs = np.vstack([_embed(texts[i:i+512]) for i in range(0, len(texts), 512)])
         self._kept = vecs if self._kept is None else np.vstack([self._kept, vecs])
 
     def filter_new(self, texts):
@@ -73,9 +82,7 @@ class Deduper:
         texts = [t for t in texts if t]
         if not texts:
             return []
-        vecs = _embedder().encode(texts, normalize_embeddings=True,
-                                  show_progress_bar=False)
-        vecs = np.asarray(vecs, dtype=np.float32)
+        vecs = _embed(texts)
 
         kept_txt, kept_vec = [], []
         for t, v in zip(texts, vecs):

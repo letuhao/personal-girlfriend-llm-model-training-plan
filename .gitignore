@@ -217,6 +217,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Training virtual envs
+.venv-train/
+.venv-train-wsl/
+
 # ── fine-tune-girlfriend ───────────────────────────────────────────────
 # Dữ liệu sinh ra theo pipeline — không commit, tái tạo được từ seeds.yaml.
 data/scenarios.jsonl
@@ -226,8 +230,19 @@ data/dataset.jsonl
 data/train.jsonl
 data/val.jsonl
 
+# Base instruction data — tải từ HuggingFace, tái tạo bằng prepare_base_data.py.
+data/base_instructions.jsonl
+# Mixed train/val — tái tạo bằng pack_mixed.py.
+data/train_mixed.jsonl
+data/val_mixed.jsonl
+
 # Log trace mọi call teacher.
 logs/
+
+# DPO pairs — tái tạo từ pipeline.judge.
+data/dpo_pairs.jsonl
+data/dpo_train.jsonl
+data/dpo_val.jsonl
 
 # Kết quả train.
 outputs/

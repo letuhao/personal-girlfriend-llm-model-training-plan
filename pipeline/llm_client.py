@@ -17,7 +17,11 @@ from config import (
 )
 from pipeline import trace
 
-_client = OpenAI(base_url=LMSTUDIO_BASE_URL, api_key=LMSTUDIO_API_KEY)
+# Timeout: Qwen3 thinking can run indefinitely if not capped at the HTTP layer.
+# max_tokens limits output but NOT thinking tokens in llama.cpp/LM Studio.
+# 120s is ~10x a normal judge call; raises httpx.TimeoutError -> retry logic fires.
+_client = OpenAI(base_url=LMSTUDIO_BASE_URL, api_key=LMSTUDIO_API_KEY,
+                 timeout=120.0)
 
 # Qwen3 có chế độ "thinking" — phòng khi output kèm <think>...</think> inline.
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -70,10 +74,23 @@ def chat(messages, temperature=0.9, max_tokens=2048, tag="?") -> str:
 
 def chat_many(list_of_messages, temperature=0.9, max_tokens=2048, tag="?"):
     """Gọi song song nhiều prompt. Kết quả giữ đúng thứ tự đầu vào."""
+    n = len(list_of_messages)
+    print(f"    [chat_many] START n={n} workers={LLM_CONCURRENCY}", flush=True)
+
+    def _call(args):
+        idx, m = args
+        print(f"    [chat_many] thread-{idx} START", flush=True)
+        result = chat(m, temperature, max_tokens, tag)
+        print(f"    [chat_many] thread-{idx} END", flush=True)
+        return result
+
     with ThreadPoolExecutor(max_workers=LLM_CONCURRENCY) as pool:
-        return list(pool.map(
-            lambda m: chat(m, temperature, max_tokens, tag), list_of_messages
-        ))
+        print(f"    [chat_many] pool created, submitting {n} tasks...", flush=True)
+        results = list(pool.map(_call, enumerate(list_of_messages)))
+        print(f"    [chat_many] map() done — {len(results)} results, waiting for pool shutdown...", flush=True)
+
+    print(f"    [chat_many] pool shutdown complete", flush=True)
+    return results
 
 
 def extract_json(text: str):

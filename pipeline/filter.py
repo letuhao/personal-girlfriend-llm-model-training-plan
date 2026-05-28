@@ -5,12 +5,22 @@ cùng dedup cấp hội thoại. Bản thắng rejection sampling vẫn có th�
 đây nếu nó không vượt ngưỡng tuyệt đối.
 """
 import json
+import re
+from collections import Counter
 
 from config import (
     JUDGED_FILE, DATASET_FILE, MIN_LINH_CHARS, MAX_LINH_CHARS,
-    JUDGE_MIN_SCORE, SLOP_PHRASES, REFUSAL_PATTERNS, DEDUP_THRESHOLD,
+    JUDGE_MIN_SCORE, MIN_AVG_SCORE, USEFUL_MAX_AVG_CHARS,
+    SLOP_PHRASES, REFUSAL_PATTERNS, DEDUP_THRESHOLD,
 )
 from pipeline.dedup import dedup_texts
+
+_TAO_MAY_RE = re.compile(r"\b(tao|mày)\b", re.IGNORECASE)
+_EM_ANH_RE  = re.compile(r"\b(em|anh)\b",  re.IGNORECASE)
+# Emoji bất kỳ — dùng để đếm tần suất
+_EMOJI_RE   = re.compile(
+    r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0000FE00-\U0000FE0F]"
+)
 
 CORE_AXES = ["nhap_vai", "giong_nguoi", "mach_lac", "luot_user"]
 OPTIONAL_AXES = ["dung", "nhip"]
@@ -51,11 +61,76 @@ def _passes_gate(rec):
     if sc.get("loi_nghiem_trong"):
         return False, "judge gắn cờ lỗi nghiêm trọng"
     for a in CORE_AXES:
-        if int(sc.get(a) or 0) < JUDGE_MIN_SCORE:
+        v = sc.get(a)
+        if v is None or int(v) < JUDGE_MIN_SCORE:
             return False, f"trục {a} dưới ngưỡng"
     for a in OPTIONAL_AXES:
-        if sc.get(a) is not None and int(sc[a]) < JUDGE_MIN_SCORE:
+        v = sc.get(a)
+        if v is not None and int(v) < JUDGE_MIN_SCORE:
             return False, f"trục {a} dưới ngưỡng"
+    # Ngưỡng avg tổng — loại example trung bình
+    all_vals = [v for v in sc.values() if isinstance(v, (int, float))]
+    if all_vals:
+        avg = sum(all_vals) / len(all_vals)
+        if avg < MIN_AVG_SCORE:
+            return False, f"avg score {avg:.2f} < {MIN_AVG_SCORE}"
+    return True, ""
+
+
+def _passes_xungho(rec) -> tuple[bool, str]:
+    """Detect tao/mày + em/anh trong cùng 1 lượt Linh ở category không phải conflict."""
+    if rec["category"] in ("conflict", "edge", "persona"):
+        return True, ""
+    for t in rec["conversation"]:
+        if t["role"] != "assistant":
+            continue
+        c = t["content"]
+        if _TAO_MAY_RE.search(c) and _EM_ANH_RE.search(c):
+            return False, "xưng hô lộn xộn trong lượt Linh"
+    return True, ""
+
+
+def _passes_repetition(rec) -> tuple[bool, str]:
+    """Detect mode collapse: Linh lặp lại nguyên văn lượt của chính mình."""
+    linh_turns = [t["content"].strip() for t in rec["conversation"]
+                  if t["role"] == "assistant"]
+    _FP = 30
+    seen_fps: list[str] = []
+    for turn in linh_turns:
+        fp = turn[:_FP].lower()
+        if len(fp) >= 20 and fp in seen_fps:
+            return False, "Linh lặp nguyên văn (mode collapse)"
+        seen_fps.append(fp)
+    return True, ""
+
+
+def _passes_emoji_spam(rec) -> tuple[bool, str]:
+    """Detect khi cùng emoji xuất hiện ở ≥ 3 lượt Linh — trở thành tic."""
+    linh_turns = [t["content"] for t in rec["conversation"]
+                  if t["role"] == "assistant"]
+    if len(linh_turns) < 3:
+        return True, ""
+    # Đếm số lượt chứa từng emoji
+    per_emoji: Counter = Counter()
+    for turn in linh_turns:
+        unique_in_turn = set(_EMOJI_RE.findall(turn))
+        per_emoji.update(unique_in_turn)
+    for emoji, cnt in per_emoji.items():
+        if cnt >= 3:
+            return False, f"emoji tic: {emoji!r} trong {cnt}/{len(linh_turns)} lượt"
+    return True, ""
+
+
+def _passes_useful_brevity(rec) -> tuple[bool, str]:
+    """Useful: avg độ dài lượt Linh > USEFUL_MAX_AVG_CHARS -> over-explain."""
+    if rec["category"] != "useful":
+        return True, ""
+    linh = [t["content"] for t in rec["conversation"] if t["role"] == "assistant"]
+    if not linh:
+        return True, ""
+    avg = sum(len(t) for t in linh) / len(linh)
+    if avg > USEFUL_MAX_AVG_CHARS:
+        return False, f"useful Linh quá dài (avg {avg:.0f} chars)"
     return True, ""
 
 
@@ -64,11 +139,27 @@ def run_filter():
     kept, dropped = [], []
 
     for rec in records:
-        ok, why = _passes_rules(rec)            # D1
+        ok, why = _passes_rules(rec)            # D1 luật rẻ tiền
         if not ok:
             dropped.append((rec["scenario_id"], "D1: " + why))
             continue
-        ok, why = _passes_gate(rec)             # cổng cuối
+        ok, why = _passes_repetition(rec)       # mode collapse
+        if not ok:
+            dropped.append((rec["scenario_id"], "repeat: " + why))
+            continue
+        ok, why = _passes_emoji_spam(rec)       # emoji tic
+        if not ok:
+            dropped.append((rec["scenario_id"], "emoji: " + why))
+            continue
+        ok, why = _passes_xungho(rec)           # xưng hô lộn xộn
+        if not ok:
+            dropped.append((rec["scenario_id"], "xungho: " + why))
+            continue
+        ok, why = _passes_useful_brevity(rec)   # useful over-explain
+        if not ok:
+            dropped.append((rec["scenario_id"], "brevity: " + why))
+            continue
+        ok, why = _passes_gate(rec)             # cổng điểm judge
         if not ok:
             dropped.append((rec["scenario_id"], "gate: " + why))
             continue

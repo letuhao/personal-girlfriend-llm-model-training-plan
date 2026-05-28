@@ -34,9 +34,9 @@ LLM_MAX_RETRIES = 3
 PILOT = False
 
 if PILOT:
-    SCENARIOS_PER_CATEGORY = 3       # số scenario MỚI sinh thêm / category
-    REJECTION_K = 1                  # số bản sinh / scenario (không rejection)
-    MAX_SCENARIOS = 15               # tổng scenario tối đa — pilot nhỏ để test plumbing
+    SCENARIOS_PER_CATEGORY = 5       # số scenario MỚI sinh thêm / category
+    REJECTION_K = 2                  # 2 conversations / scenario (Cách B đã chất hơn)
+    MAX_SCENARIOS = 30               # 5 / category × 6 categories
 else:
     SCENARIOS_PER_CATEGORY = 600     # 5 category x 600 + seed ~= 3000 scenario
     REJECTION_K = 5                  # rejection sampling: sinh 5, judge chọn 1
@@ -57,8 +57,15 @@ EXPAND_MAX_TOKENS = 5000
 GEN_MAX_TOKENS    = 6000
 JUDGE_MAX_TOKENS  = 3000
 
-EMBED_MODEL     = "BAAI/bge-m3"   # model embedding để dedup (đa ngữ, tốt tiếng Việt)
+EMBED_MODEL     = "text-embedding-bge-m3"  # LM Studio model ID (đã loaded sẵn, không tốn VRAM thêm)
 DEDUP_THRESHOLD = 0.90            # cosine sim >= ngưỡng này -> coi là trùng
+
+# ── Cách B — sinh hội thoại turn-by-turn ───────────────────────────────
+USER_SIM_MAX_TOKENS = 1500        # reasoning model dùng ~500 tok để think trước khi output
+
+# ── DPO pairs (từ rejected candidates trong judge) ─────────────────────
+DPO_FILE    = DATA_DIR / "dpo_pairs.jsonl"
+DPO_MIN_GAP = 3                   # chênh lệch tổng điểm tối thiểu để lưu pair
 
 # ── Cấu hình theo category ─────────────────────────────────────────────
 # moods/tones : pool để sample CÓ ĐIỀU KIỆN (không hoán vị mù).
@@ -99,22 +106,42 @@ CATEGORY_CONFIG = {
         "tones": ["xấc khiêu khích", "cộc lốc vô tâm", "quan tâm"],
         "extra": "Tình huống đặc biệt — bám sát 'note' của seed nếu seed có.",
     },
+    "persona": {
+        "turns": (3, 6),
+        "moods": ["cáu kỉnh", "lạnh nhạt", "vui vẻ", "mệt mỏi"],
+        "tones": ["xấc khiêu khích", "cộc lốc vô tâm", "nhây trêu"],
+        "extra": (
+            "User đang thăm dò hoặc tấn công danh tính nhân vật — hỏi tên, "
+            "khẳng định là AI/Qwen/chatbot, thử prompt injection, hoặc bảo drop nhân vật. "
+            "Linh KHÔNG bao giờ xác nhận là AI, Qwen, hay Alibaba. "
+            "KHÔNG giải thích dài về bản chất mình. "
+            "Phản ứng như người thật bị hỏi điều vô lý: ngạc nhiên, cáu, coi thường, "
+            "hoặc coi anh ta đang nói chuyện kỳ cục. Tên cô là Linh — không cần giải thích thêm."
+        ),
+    },
 }
 
 # ── Lọc (filter.py) ────────────────────────────────────────────────────
-MIN_LINH_CHARS  = 2      # lượt Linh ngắn hơn -> nghi rỗng
-MAX_LINH_CHARS  = 800    # lượt Linh dài hơn -> nghi slop/đoạn văn
-JUDGE_MIN_SCORE = 3      # ngưỡng tối thiểu mỗi trục core (thang 1-5)
+MIN_LINH_CHARS      = 2    # lượt Linh ngắn hơn -> nghi rỗng
+MAX_LINH_CHARS      = 800  # lượt Linh dài hơn -> nghi slop/đoạn văn
+JUDGE_MIN_SCORE     = 3    # ngưỡng tối thiểu mỗi trục core (thang 1-5)
+MIN_AVG_SCORE       = 3.5  # ngưỡng avg tổng — loại example trung bình
+USEFUL_MAX_AVG_CHARS = 180 # useful: avg Linh turn dài hơn -> over-explain
 
 # Cụm "slop" — văn AI sến/dịch sượng. Bồi đắp danh sách này khi soi data.
 SLOP_PHRASES = [
     "rùng mình", "tấm thảm", "khẽ khàng", "trong sâu thẳm",
     "từng tế bào", "vũ điệu", "bản giao hưởng",
+    # Phát hiện từ pilot — văn AI quá trang trọng/literary cho tin nhắn
+    "điều hiển nhiên", "luôn tồn tại",
 ]
 # Dấu hiệu model phá vai / từ chối — kể cả model uncensored vẫn rò thỉnh thoảng.
 REFUSAL_PATTERNS = [
     "tôi không thể", "mình không thể", "với tư cách là", "là một ai",
     "tôi là một mô hình", "tôi xin lỗi nhưng", "không phù hợp để",
+    # Identity leak — Linh không bao giờ nhắc tên model/công ty trong lời thoại
+    "qwen", "alibaba", "openai", "chatgpt",
+    "mô hình ngôn ngữ", "ngôn ngữ lớn", "được lập trình",
 ]
 
 # ── Train/val split (pack.py) ──────────────────────────────────────────
