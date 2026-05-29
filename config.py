@@ -121,6 +121,53 @@ CATEGORY_CONFIG = {
     },
 }
 
+# ── Cấu hình category mới (v3) ─────────────────────────────────────────
+CATEGORY_CONFIG.update({
+    "long-turn": {
+        "turns": (10, 16),
+        "moods": ["vui vẻ", "mệt mỏi", "cáu kỉnh", "bồn chồn", "lạnh nhạt"],
+        "tones": ["quan tâm", "cộc lốc vô tâm", "nhây trêu", "tình cảm", "nhõng nhẽo"],
+        "extra": (
+            "Hội thoại DÀI — phải có ít nhất 2 pivot chủ đề tự nhiên. "
+            "Mỗi pivot phải có cầu nối (không nhảy cóc). "
+            "Linh không nhất quán một chiều xuyên suốt — mood và chủ đề thay đổi theo dòng chuyện. "
+            "Kết thúc ở nơi khác hẳn so với lúc bắt đầu."
+        ),
+    },
+    "confrontation": {
+        "turns": (4, 8),
+        "moods": ["cáu kỉnh", "phòng thủ cao độ", "lạnh nhạt", "bình thản"],
+        "tones": ["quan tâm", "cộc lốc vô tâm", "xấc khiêu khích", "nhây trêu"],
+        "extra": (
+            "Có áp lực từ bên ngoài — không phải xung đột trực tiếp User vs Linh. "
+            "Linh phản ứng vào sự kiện, không đổ tức lên User vô cớ. "
+            "Linh gọi tên vấn đề thẳng thắn, không nhượng bộ để vừa lòng ai."
+        ),
+    },
+    "minimal": {
+        "turns": (4, 8),
+        "moods": ["mệt mỏi", "cáu kỉnh", "lạnh nhạt", "bồn chồn"],
+        "tones": ["cộc lốc vô tâm", "hỏi việc", "nhây trêu"],
+        "extra": (
+            "Linh đang bận hoặc không muốn engage nhiều. "
+            "Một số lượt Linh PHẢI ngắn — 1-3 từ, hoặc seen. "
+            "Không giải thích lý do bận nếu không cần. "
+            "Khi sẵn sàng thì mới reply đầy đủ — không phải ignore, chỉ là có thứ tự ưu tiên."
+        ),
+    },
+    "initiative": {
+        "turns": (4, 8),
+        "moods": ["vui vẻ", "cáu kỉnh", "mệt mỏi", "bồn chồn"],
+        "tones": ["quan tâm", "nhây trêu", "tình cảm", "cộc lốc vô tâm"],
+        "extra": (
+            "LINH NHẮN TRƯỚC — User không khởi xướng. "
+            "Linh có lý do (nhớ, tức, muốn kể) nhưng không nói thẳng. "
+            "Dùng cái cớ (link, ảnh, câu hỏi ngẫu nhiên) như vỏ bọc cho việc chủ động contact. "
+            "User có thể ngạc nhiên hoặc teasing về việc Linh nhắn trước."
+        ),
+    },
+})
+
 # ── Lọc (filter.py) ────────────────────────────────────────────────────
 MIN_LINH_CHARS      = 2    # lượt Linh ngắn hơn -> nghi rỗng
 MAX_LINH_CHARS      = 800  # lượt Linh dài hơn -> nghi slop/đoạn văn
@@ -143,6 +190,11 @@ REFUSAL_PATTERNS = [
     "qwen", "alibaba", "openai", "chatgpt",
     "mô hình ngôn ngữ", "ngôn ngữ lớn", "được lập trình",
 ]
+
+# ── Emoji (filter.py) ─────────────────────────────────────────────────
+# Theo LUẬT CỨNG trong linh_character.txt: chỉ được dùng 3 emoji này.
+# Lượt Linh chứa bất kỳ emoji nào ngoài danh sách này sẽ bị loại.
+ALLOWED_EMOJI = {"🙂", "💀", "🤡"}
 
 # ── Train/val split (pack.py) ──────────────────────────────────────────
 VAL_RATIO  = 0.05

@@ -11,7 +11,7 @@ from collections import Counter
 from config import (
     JUDGED_FILE, DATASET_FILE, MIN_LINH_CHARS, MAX_LINH_CHARS,
     JUDGE_MIN_SCORE, MIN_AVG_SCORE, USEFUL_MAX_AVG_CHARS,
-    SLOP_PHRASES, REFUSAL_PATTERNS, DEDUP_THRESHOLD,
+    SLOP_PHRASES, REFUSAL_PATTERNS, DEDUP_THRESHOLD, ALLOWED_EMOJI,
 )
 from pipeline.dedup import dedup_texts
 
@@ -121,6 +121,17 @@ def _passes_emoji_spam(rec) -> tuple[bool, str]:
     return True, ""
 
 
+def _passes_forbidden_emoji(rec) -> tuple[bool, str]:
+    """Detect lượt Linh dùng emoji ngoài ALLOWED_EMOJI (🙂 💀 🤡)."""
+    for t in rec["conversation"]:
+        if t["role"] != "assistant":
+            continue
+        for emoji in _EMOJI_RE.findall(t["content"]):
+            if emoji not in ALLOWED_EMOJI:
+                return False, f"emoji bị cấm: {emoji!r}"
+    return True, ""
+
+
 def _passes_useful_brevity(rec) -> tuple[bool, str]:
     """Useful: avg độ dài lượt Linh > USEFUL_MAX_AVG_CHARS -> over-explain."""
     if rec["category"] != "useful":
@@ -148,6 +159,10 @@ def run_filter():
             dropped.append((rec["scenario_id"], "repeat: " + why))
             continue
         ok, why = _passes_emoji_spam(rec)       # emoji tic
+        if not ok:
+            dropped.append((rec["scenario_id"], "emoji: " + why))
+            continue
+        ok, why = _passes_forbidden_emoji(rec)  # emoji bị cấm theo LUẬT CỨNG
         if not ok:
             dropped.append((rec["scenario_id"], "emoji: " + why))
             continue

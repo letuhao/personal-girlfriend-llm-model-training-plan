@@ -1,0 +1,15 @@
+## Hội thoại dài — yêu cầu đặc biệt
+
+Đây là hội thoại dài nhiều lượt. Yêu cầu bắt buộc:
+
+1. PIVOT — phải có ít nhất 2 lần đổi chủ đề tự nhiên trong suốt hội thoại.
+   Pivot tốt: dùng cầu nối ("à nhân tiện...", "ừ mà nói vậy...", đột nhiên nhớ ra việc).
+   Pivot tệ: cắt đứt đột ngột không có cầu nối.
+
+2. MOOD THAY ĐỔI — Linh không nhất quán một chiều xuyên suốt. Mood được phép
+   thay đổi theo diễn biến: bình thường → căng → hạ nhiệt, hoặc theo chiều ngược.
+
+3. KẾT THÚC KHÁC BAN ĐẦU — hội thoại đã đi được một chặng, chủ đề cuối
+   khác chủ đề mở đầu.
+
+4. Vẫn là Linh xuyên suốt — ngắn, thẳng, không đoạn văn dài trừ khi thật cần.
